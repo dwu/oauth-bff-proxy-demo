@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="icon" href="data:;base64,iVBORw0KGgo=">
+<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+</head>
+<body>
+<div id="app">
+    <h2>Backend API response</h2>
+    <p>Message is: <i>{{ message }}</i></p>
+    <p>Current timestamp is: <i>{{ timestamp }}</i></p>
+    <button @click="call_api">Refresh timestamp</button>
+</div>
+
+<script>
+    const { createApp } = Vue
+
+    createApp({
+        data() {
+            return {
+                message: "-",
+                timestamp: "-"
+            }
+        },
+        methods: {
+            call_api() {
+                axios
+                    .get("http://localhost:3000/api", { withCredentials: true })
+                    .then(function (response) {
+                        this.message = response.data.message;
+                        this.timestamp = response.data.date;
+                    }.bind(this))
+                    .catch(function (error) {
+                        window.location = "http://localhost:3000/login";
+                    });
+            }
+        },
+        mounted() {
+            this.call_api();
+        }
+    }).mount("#app")
+</script>
+</body>
+</html>

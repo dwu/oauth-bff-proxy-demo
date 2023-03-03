@@ -1,0 +1,66 @@
+@startuml
+
+box "No token access, session only" #e8ffe8
+  participant Browser
+  participant Frontend
+end box
+
+box "Token access" #ffe8e8
+  participant "Auth Proxy"
+  participant Backend
+  participant KeyCloak
+end box
+
+"Browser" -> "Frontend": GET http://localhost:3002
+activate "Frontend"
+"Frontend" --> "Browser": Vue App
+deactivate "Frontend"
+
+"Browser" -> "Auth Proxy": GET http://localhost:3000/api\n(w/o session)
+activate "Auth Proxy"
+
+  "Auth Proxy" -> "Backend": GET http://localhost:3001/api\n(w/o JWT)
+  activate "Backend"
+  "Backend" --> "Auth Proxy": 401 Unauthorized
+  deactivate "Backend"
+
+"Auth Proxy" --> "Browser": 401 Unauthorized
+deactivate "Auth Proxy"
+
+"Browser" -> "Auth Proxy": GET http://localhost:3000/login\n(w/o session)
+activate "Auth Proxy"
+"Auth Proxy" --> "Browser": 302 Redirect to KeyCloak auth endpoint
+deactivate "Auth Proxy"
+
+"Browser" -> "KeyCloak": GET .../openid-connect/auth?response_type=code&...
+activate "KeyCloak"
+"KeyCloak" --> "Browser": 302 Redirect to Auth Proxy /callback
+deactivate "KeyCloak"
+
+"Browser" -> "Auth Proxy": GET http://localhost:3000/callback?code=...
+activate "Auth Proxy"
+
+"Auth Proxy" --> "KeyCloak": POST .../openid-connect/token
+activate "KeyCloak"
+"KeyCloak" --> "Auth Proxy": Token Information (access_token, refresh_token, etc.)
+deactivate "KeyCloak"
+
+note left: Auth Proxy stores the returned token info\nin server-side session and sets\na cookie with the session id
+"Auth Proxy" --> "Browser": 302 Redirect to http://localhost:3002
+deactivate "Auth Proxy"
+
+"Browser" -> "Frontend": GET http://localhost:3002
+activate "Frontend"
+"Frontend" --> "Browser": Vue App
+deactivate "Frontend"
+
+"Browser" -> "Auth Proxy": GET http://localhost:3000/api\n(w/ session cookie)
+activate "Auth Proxy"
+"Auth Proxy" -> "Backend": GET http://localhost:3001/api\n(w/ JWT)
+activate "Backend"
+"Backend" --> "Auth Proxy": 200 OK w/ result
+deactivate "Backend"
+"Auth Proxy" --> "Browser": 200 OK w/ result
+deactivate "Auth Proxy"
+
+@enduml
