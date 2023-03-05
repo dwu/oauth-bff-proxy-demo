@@ -7,7 +7,8 @@ This project demonstrates the *BFF Proxy Pattern* from the IETF draft document [
 **Notes:**
 - Demo does not use HTTPS to make it easier to follow along what's going on via packet sniffers. Hence cookies are not "Secure".
 - The auth-proxy implementation stores the user's tokens in a server-side session. An alternative stateless implementation would be to store the tokens in an encrypted, secure cookie with properties `SameSite=strict`, `Secure`, `HttpOnly`
-  - Note that browsers typically have a size limit for cookies. In section 5.3 "Implementation Limits" in [RFC 2965](https://www.rfc-editor.org/rfc/rfc2965) it is recommended that browser implementations SHOULD allow cookies with at least 4096 bytes in size.
+  - `auth-proxy-cookie` provides an experimental alterantive stateless implementation of the `auth-proxy`.
+  - Note that browsers typically have a size limit for cookies. In section 5.3 "Implementation Limits" in [RFC 2965](https://www.rfc-editor.org/rfc/rfc2965) it is recommended that browser implementations SHOULD allow cookies with at least 4096 bytes in size. To stay withing this limit and allow for storing both `access_token` and `refresh_token`, the showcase implementation compresses the token before it is encrypted.
 
 # Services
 
@@ -21,7 +22,7 @@ This project demonstrates the *BFF Proxy Pattern* from the IETF draft document [
 - If status 401 is returned, the application redirects to the proxy's `/login` endpoint
 - If status 200 is returned, the API result is displayed
 
-## Proxy
+## Auth Proxy
 
 - Running on `http://localhost:3000/`
 - Performs auth code flow via client `auth-proxy` when `/login` is called
