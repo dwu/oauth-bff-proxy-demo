@@ -14,14 +14,16 @@ const salt = "f2b6d40b1239b743f62b2ad10bb2d75590469d48daf39115f0b08e0b61f933b5";
 const iv = Buffer.from("0e7faa381c10876cb3ac6324d40fc6e1", "hex");
 const key = crypto.scryptSync(password, salt, 32);
 
-function encrypt(oauthtokeninfo) {
+const USE_COMPRESSION = false;
+
+function encrypt(data) {
     const cipher = crypto.createCipheriv("aes256", key, iv);
-    return cipher.update(oauthtokeninfo, "utf8", "hex") + cipher.final("hex");
+    return Buffer.concat([cipher.update(data), cipher.final()]);
 }
 
-function decrypt(oauthtokeninfo) {
+function decrypt(data) {
     const decipher = crypto.createDecipheriv("aes256", key, iv);
-    return decipher.update(oauthtokeninfo, "hex", "utf8") + decipher.final("utf8");
+    return Buffer.concat([decipher.update(data), decipher.final()]);
 }
 
 const api = new oauthclient({
@@ -47,13 +49,21 @@ app.use(cookieParser());
 
 app.use("/api", proxy("http://localhost:3001", {
     proxyReqOptDecorator: function(proxyReqOpts, srcReq) {
-        const authInfoCookie = srcReq.cookies.authinfo;
-        if (typeof authInfoCookie !== "undefined") {
-            console.log("Found encrypted authinfo cookie");
-            const decryptedCookie = decrypt(authInfoCookie);
-            const decompressedCookie = JSON.parse(zlib.brotliDecompressSync(Buffer.from(decryptedCookie, "base64")));
+        console.log("api: called");
+        const tokenInfo = srcReq.cookies.authinfo;
+        if (typeof tokenInfo !== "undefined") {
+            console.log("api: Found encrypted authinfo cookie with tokenInfo");
+            console.log(`api: tokenInfo (len=${tokenInfo.length}): ${tokenInfo}`);
+            const decryptedTokenInfo = decrypt(Buffer.from(tokenInfo, "base64"));
+            console.log(`api: decrypted tokenInfo (len=${decryptedTokenInfo.length}): ${decryptedTokenInfo}`);
 
-            proxyReqOpts.headers["Authorization"] = "Bearer " + decompressedCookie.access_token;
+            if (USE_COMPRESSION) {
+                const decompressedTokenInfo = zlib.brotliDecompressSync(decryptedTokenInfo);
+                console.log(`api: decompressed tokenInfo (len=${decompressedTokenInfo.length}): ${decompressedTokenInfo}`);
+                proxyReqOpts.headers["Authorization"] = "Bearer " + JSON.parse(decompressedTokenInfo).access_token;
+            } else {
+                proxyReqOpts.headers["Authorization"] = "Bearer " + JSON.parse(decryptedTokenInfo).access_token;
+            }
         }
         return proxyReqOpts;
     }
@@ -70,24 +80,28 @@ app.get("/callback", async function (req, res) {
     await api.authorizationCode.getToken({
         callbackUrl: req.procotol + "://" + req.get("host") + req.originalUrl,
         onSuccess: (data) => {
-            console.log("Successfully retrieved tokens, storing in encrypted cookie...");
+            console.log("callback: Successfully retrieved tokens, storing in encrypted cookie...");
             // store returned token info
             // contains among others both access_token and refresh_token
-            const tokenInfo = JSON.stringify(data);
-            const compressedTokenInfo = zlib.brotliCompressSync(Buffer.from(tokenInfo), {
-                params: {
-                    [zlib.constants.BROTLI_PARAM_MODE]: zlib.constants.BROTLI_MODE_TEXT
-                }
-            });
-            const encryptedTokenInfo = encrypt(compressedTokenInfo.toString("base64"));
-            console.log(`length of uncompressed and encrypted token: ${encrypt(tokenInfo).toString("base64").length}`);
-            console.log(`length of compressed and encrypted token: ${encryptedTokenInfo.length}`);
-            res.cookie("authinfo", encryptedTokenInfo, { maxAge: 60000, httpOnly: true, sameSite: "strict" });
+            var tokenInfo = JSON.stringify(data);
+            console.log(`callback: tokenInfo (len=${tokenInfo.length}): ${tokenInfo}`);
+            if (USE_COMPRESSION) {
+                const compressedTokenInfo = zlib.brotliCompressSync(Buffer.from(tokenInfo));
+                console.log(`callback: compressed TokenInfo (len=${compressedTokenInfo.length}): ${compressedTokenInfo}`);
+                const encryptedTokenInfo = encrypt(compressedTokenInfo).toString("base64");
+                console.log(`callback: encrypted tokenInfo (len=${encryptedTokenInfo.length}): ${encryptedTokenInfo}`);
+                res.cookie("authinfo", encryptedTokenInfo, { maxAge: 60000, httpOnly: true, sameSite: "strict" });
+            } else {
+                const encryptedTokenInfo = encrypt(tokenInfo).toString("base64");
+                console.log(`callback: encrypted tokenInfo (len=${encryptedTokenInfo.length}): ${encryptedTokenInfo}`);
+                res.cookie("authinfo", encryptedTokenInfo, { maxAge: 60000, httpOnly: true, sameSite: "strict" });
+            }
+
             res.redirect("http://localhost:3002/");
         },
         onError: (error) => {
             console.log(error);
-          	res.status(500).end();
+            res.status(500).end();
         },
     });
 });
